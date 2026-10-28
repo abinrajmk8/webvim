@@ -7,7 +7,8 @@ export type AdapterCapability =
   | "vertical-motion"
   | "word-motion"
   | "line-operations"
-  | "cursor-presentation";
+  | "cursor-presentation"
+  | "owns-escape";
 
 export interface EditorAdapter {
   readonly id: string;
