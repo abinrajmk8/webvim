@@ -22,7 +22,7 @@ const STYLE = `
 /** Temporary debug UI. Returns a function that unmounts it. */
 export function mountDebugPanel(modes: ModeManager): () => void {
   const host = document.createElement("div");
-  host.setAttribute("data-browser-vim", "debug-panel");
+  host.setAttribute("data-webvim", "debug-panel");
   const shadow = host.attachShadow({ mode: "closed" });
 
   const style = document.createElement("style");

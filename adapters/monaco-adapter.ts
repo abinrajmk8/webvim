@@ -49,7 +49,7 @@ class MonacoEditorAdapter implements EditorAdapter {
   moveCursor(motion: CursorMotion): void {
     if (this.editor) {
       // Native Monaco command: keeps sticky column, folding, wrapping, highlighting.
-      this.editor.trigger("browser-vim", COMMAND_IDS[motion], {});
+      this.editor.trigger("webvim", COMMAND_IDS[motion], {});
       return;
     }
     this.dispatchArrowKey(motion);

@@ -5,7 +5,7 @@ import { VimEngine } from "../core/vim-engine";
 import { KeyboardController } from "../input/keyboard-controller";
 import { mountDebugPanel } from "../ui/debug-panel";
 
-const BOOT_FLAG = Symbol.for("browser-vim.booted");
+const BOOT_FLAG = Symbol.for("webvim.booted");
 
 export default defineContentScript({
   matches: ["*://neetcode.io/*", "*://*.neetcode.io/*"],

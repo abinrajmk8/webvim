@@ -51,7 +51,7 @@ export class KeyboardController {
       }
     } catch (error) {
       // Never break the host page; fall back to native behavior.
-      console.error("[browser-vim] key handling failed", error);
+      console.error("[webvim] key handling failed", error);
     }
   };
 }
