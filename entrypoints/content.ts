@@ -1,12 +1,14 @@
 import { createMonacoProvider } from "../adapters/monaco-adapter";
 import { createAceProvider } from "../adapters/ace-adapter";
 import { createCodeMirrorProvider } from "../adapters/codemirror-adapter";
+import { startGoogleDocsSession } from "../adapters/google-docs-session";
 import {
   createContentEditableProvider,
   createTextControlProvider,
 } from "../adapters/dom-provider";
 import { EditorAdapterRegistry } from "../adapters/registry";
 import { ModeManager } from "../core/modes";
+import { GOOGLE_DOCS_DETACHED_MESSAGE } from "../core/google-docs-bridge";
 import {
   DEFAULT_WEBVIM_ENABLED,
   WEBVIM_ENABLED_KEY,
@@ -29,10 +31,16 @@ export default defineContentScript({
   main() {
     const flags = window as unknown as Record<symbol, unknown>;
     if (flags[BOOT_FLAG]) return; // guard against double injection
-    const state: { session: RuntimeSession | null } = { session: null };
+    const state: {
+      session: RuntimeSession | null;
+      generation: number;
+      starting: boolean;
+    } = { session: null, generation: 0, starting: false };
     flags[BOOT_FLAG] = state;
 
     const stopSession = (): void => {
+      state.generation += 1;
+      state.starting = false;
       const session = state.session;
       if (!session) return;
       state.session = null;
@@ -50,47 +58,76 @@ export default defineContentScript({
     };
 
     const startSession = (): void => {
-      if (state.session) return;
+      if (state.session || state.starting) return;
+      const generation = ++state.generation;
+      state.starting = true;
 
-      let controller: KeyboardController | null = null;
-      let unmountPanel: (() => void) | null = null;
-      try {
-        const modes = new ModeManager("normal");
-        const engine = new VimEngine(modes);
-        const isGoogleWorkspace = isGoogleDocsContext();
-        const registry = new EditorAdapterRegistry(
-          isGoogleWorkspace
-            ? []
-            : [
-                createMonacoProvider(),
-                createAceProvider(),
-                createCodeMirrorProvider(),
-                createTextControlProvider(),
-                createContentEditableProvider(),
-              ],
-        );
+      void (async (): Promise<void> => {
+        let controller: { stop(): void } | null = null;
+        let unmountPanel: (() => void) | null = null;
+        try {
+          const modes = new ModeManager("normal");
+          const isGoogleWorkspace = isGoogleDocsContext();
 
-        controller = new KeyboardController(engine, registry);
-        unmountPanel =
-          window === window.top && !isGoogleWorkspace
-            ? mountDebugPanel(modes)
-            : () => undefined;
-        controller.start();
-        state.session = { controller, unmountPanel };
-      } catch (error) {
-        try {
-          controller?.stop();
-        } catch (stopError) {
-          console.error("[webvim] could not clean up keyboard handling", stopError);
+          if (isGoogleWorkspace) {
+            if (window !== window.top || !isGoogleDocsEditorPage()) return;
+            controller = await startGoogleDocsSession(modes);
+            if (!controller) return;
+          } else {
+            const registry = new EditorAdapterRegistry([
+              createMonacoProvider(),
+              createAceProvider(),
+              createCodeMirrorProvider(),
+              createTextControlProvider(),
+              createContentEditableProvider(),
+            ]);
+            const keyboard = new KeyboardController(
+              new VimEngine(modes),
+              registry,
+            );
+            keyboard.start();
+            controller = keyboard;
+          }
+
+          unmountPanel =
+            window === window.top ? mountDebugPanel(modes) : () => undefined;
+
+          if (generation !== state.generation) {
+            controller.stop();
+            unmountPanel();
+            return;
+          }
+          state.session = { controller, unmountPanel };
+        } catch (error) {
+          try {
+            controller?.stop();
+          } catch (stopError) {
+            console.error("[webvim] could not clean up keyboard handling", stopError);
+          }
+          try {
+            unmountPanel?.();
+          } catch (panelError) {
+            console.error("[webvim] could not clean up mode panel", panelError);
+          }
+          console.error("[webvim] could not initialize on this page", error);
+        } finally {
+          if (generation === state.generation) state.starting = false;
         }
-        try {
-          unmountPanel?.();
-        } catch (panelError) {
-          console.error("[webvim] could not clean up mode panel", panelError);
-        }
-        console.error("[webvim] could not initialize on this page", error);
-      }
+      })();
     };
+
+    browser.runtime.onMessage.addListener((message: unknown) => {
+      if (
+        window === window.top &&
+        typeof message === "object" &&
+        message !== null &&
+        "type" in message &&
+        message.type === GOOGLE_DOCS_DETACHED_MESSAGE
+      ) {
+        stopSession();
+      }
+    });
+    window.addEventListener("pagehide", stopSession, { once: true });
 
     const applyStoredValue = (value: unknown): void => {
       if (typeof value === "boolean" ? value : DEFAULT_WEBVIM_ENABLED) {
@@ -99,6 +136,15 @@ export default defineContentScript({
         stopSession();
       }
     };
+
+    window.addEventListener("pageshow", (event) => {
+      if (!event.persisted) return;
+      void getWebVimEnabled()
+        .then(applyStoredValue)
+        .catch((error: unknown) => {
+          console.error("[webvim] could not restore page session", error);
+        });
+    });
 
     let settingChangedDuringRead = false;
     const onStorageChanged = (
@@ -128,7 +174,7 @@ export default defineContentScript({
 });
 
 interface RuntimeSession {
-  readonly controller: KeyboardController;
+  readonly controller: { stop(): void };
   readonly unmountPanel: () => void;
 }
 
@@ -159,4 +205,11 @@ function isGoogleDocsContext(): boolean {
   }
 
   return Boolean(document.referrer && isDocsOrigin(document.referrer));
+}
+
+function isGoogleDocsEditorPage(): boolean {
+  return (
+    window.location.hostname === "docs.google.com" &&
+    window.location.pathname.startsWith("/document/")
+  );
 }

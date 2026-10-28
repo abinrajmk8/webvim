@@ -6,7 +6,7 @@ export default defineConfig({
   manifest: {
     name: 'WebVim',
     description: 'Vim-style editing, everywhere on the web.',
-    permissions: ['storage'],
+    permissions: ['storage', 'debugger'],
     action: {
       default_title: 'WebVim',
     },

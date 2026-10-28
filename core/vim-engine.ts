@@ -44,6 +44,9 @@ export class VimEngine {
       if (mode !== "normal") {
         this.modes.set("normal");
         this.applyMode(editor, "normal");
+        // Docs must not process the same Escape and move focus out of its
+        // hidden editing frame. Other editors retain their existing behavior.
+        if (editor.capabilities.has("owns-escape")) return CONSUMED;
       }
       // Keep Escape available to close host editor widgets.
       return PASS_THROUGH;
