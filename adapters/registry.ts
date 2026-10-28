@@ -2,26 +2,40 @@ import type { EditorAdapter } from "../core/editor-adapter";
 
 export interface EditorAdapterProvider {
   readonly id: string;
-  /** Whether this provider should be active on the given page. */
-  supportsPage(url: URL): boolean;
-  /** Returns an adapter if the event target is this provider's editor input. */
-  resolve(target: EventTarget | null): EditorAdapter | null;
+  /** Locate an active editable root inside a keyboard/focus event path. */
+  findRoot(path: readonly EventTarget[]): HTMLElement | null;
+  /** Return null when the page does not expose this editor's public API. */
+  create(root: HTMLElement): EditorAdapter | null;
 }
 
 export class EditorAdapterRegistry {
   private readonly providers: readonly EditorAdapterProvider[];
+  private readonly instances = new WeakMap<HTMLElement, EditorAdapter>();
 
-  constructor(pageUrl: URL, providers: readonly EditorAdapterProvider[]) {
-    this.providers = providers.filter((provider) =>
-      provider.supportsPage(pageUrl),
-    );
+  constructor(providers: readonly EditorAdapterProvider[]) {
+    this.providers = providers;
   }
 
-  resolve(target: EventTarget | null): EditorAdapter | null {
+  resolve(path: readonly EventTarget[]): EditorAdapter | null {
     for (const provider of this.providers) {
-      const adapter = provider.resolve(target);
-      if (adapter) return adapter;
+      const root = provider.findRoot(path);
+      if (!root) continue;
+
+      const existing = this.instances.get(root);
+      if (existing) return existing;
+
+      const adapter = provider.create(root);
+      if (!adapter) continue;
+      this.instances.set(root, adapter);
+      return adapter;
     }
     return null;
+  }
+
+  release(adapter: EditorAdapter): void {
+    if (this.instances.get(adapter.root) === adapter) {
+      this.instances.delete(adapter.root);
+    }
+    adapter.dispose();
   }
 }

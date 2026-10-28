@@ -1,33 +1,13 @@
-import type { Binding } from "./commands";
-import type { VimMode } from "./modes";
+import type { CursorMotion, WordMotion } from "./editor-adapter";
 
-const moveDown: Binding = {
-  execute: ({ editor }) => editor.moveCursor("down"),
-  consume: true,
+export const CURSOR_MOTIONS: Readonly<Record<string, CursorMotion>> = {
+  h: "left",
+  j: "down",
+  k: "up",
+  l: "right",
 };
 
-const moveUp: Binding = {
-  execute: ({ editor }) => editor.moveCursor("up"),
-  consume: true,
+export const WORD_MOTIONS: Readonly<Record<string, WordMotion>> = {
+  w: "forward",
+  b: "backward",
 };
-
-const enterInsert: Binding = {
-  execute: ({ modes }) => modes.set("insert"),
-  consume: true,
-};
-
-// Not consumed, so the editor can still close widgets (e.g. suggestions) on Esc.
-const enterNormal: Binding = {
-  execute: ({ modes }) => modes.set("normal"),
-  consume: false,
-};
-
-export const KEYMAPS: Readonly<Record<VimMode, ReadonlyMap<string, Binding>>> =
-  {
-    normal: new Map<string, Binding>([
-      ["j", moveDown],
-      ["k", moveUp],
-      ["i", enterInsert],
-    ]),
-    insert: new Map<string, Binding>([["Escape", enterNormal]]),
-  };

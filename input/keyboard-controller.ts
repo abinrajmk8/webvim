@@ -1,3 +1,4 @@
+import { ActiveEditorManager } from "../detection/active-editor-manager";
 import type { EditorAdapterRegistry } from "../adapters/registry";
 import type { KeyStroke } from "../core/keys";
 import type { VimEngine } from "../core/vim-engine";
@@ -14,8 +15,9 @@ function toKeyStroke(event: KeyboardEvent): KeyStroke {
 
 export class KeyboardController {
   private readonly engine: VimEngine;
-  private readonly registry: EditorAdapterRegistry;
+  private readonly activeEditors: ActiveEditorManager;
   private readonly target: Window;
+  private active = false;
 
   constructor(
     engine: VimEngine,
@@ -23,17 +25,32 @@ export class KeyboardController {
     target: Window = window,
   ) {
     this.engine = engine;
-    this.registry = registry;
     this.target = target;
+    this.activeEditors = new ActiveEditorManager(
+      registry,
+      (adapter) => {
+        if (adapter?.capabilities.has("cursor-presentation")) {
+          adapter.setMode?.(this.engine.mode);
+        }
+      },
+      target,
+    );
   }
 
   start(): void {
+    if (this.active) return;
+    this.activeEditors.start();
     // Capture phase on window: runs before the editor's own listeners.
     this.target.addEventListener("keydown", this.onKeyDown, true);
+    this.active = true;
   }
 
   stop(): void {
+    if (!this.active) return;
     this.target.removeEventListener("keydown", this.onKeyDown, true);
+    this.activeEditors.stop();
+    this.engine.dispose();
+    this.active = false;
   }
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
@@ -41,7 +58,7 @@ export class KeyboardController {
     if (!event.isTrusted || event.isComposing || event.keyCode === 229) return;
 
     try {
-      const editor = this.registry.resolve(event.target);
+      const editor = this.activeEditors.resolvePath(event.composedPath());
       if (!editor) return;
 
       const result = this.engine.handleKey(toKeyStroke(event), editor);
