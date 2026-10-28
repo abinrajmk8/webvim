@@ -7,12 +7,17 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-.output
-.wxt
-dist
-build
-coverage
+node_modules/
+.output/
+.wxt/
+dist/
+build/
+coverage/
+.cache/
+.turbo/
+*.tsbuildinfo
+*.crx
+*.zip
 stats.html
 stats-*.json
 web-ext.config.ts
@@ -22,10 +27,19 @@ web-ext.config.ts
 .env.*
 !.env.example
 *.local
+*.secret
+*.credentials
+credentials.*
+secrets.*
+*-credentials.json
+*-secrets.json
 *.pem
 *.key
 *.p12
 *.pfx
+.npmrc
+.pypirc
+.netrc
 
 # Editor directories and files
 .vscode/*
